@@ -12,52 +12,6 @@
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-static u_int16_t ip_cksum(u_int16_t *addr, int len)
-{
-	u_int16_t cksum;
-	u_int32_t sum = 0;
-
-	while (len > 1)
-	{
-		sum += *addr++;
-		len -= 2;
-	}
-	if (len == 1)
-	sum += *(u_int8_t*) addr;
-	sum = (sum >> 16) + (sum & 0xffff);  //把高位的进位，加到低八位，其实是32位加法
-	sum += (sum >> 16);  //add carry
-	cksum = ~sum;   //取反
-	return (cksum);
-}
-
-static u_int16_t tcp_cksum(char *pkg_data)
-{
-	struct iphdr *iph = (struct iphdr *) pkg_data;
-	struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-	char tcpBuf[1500];
-
-	struct pseudoTcpHeader
-	{
-	    u_int32_t ip_src;
-	    u_int32_t ip_dst;
-	    u_int8_t zero;//always zero
-	    u_int8_t protocol;// = 6;//for tcp
-	    u_int16_t tcp_len;
-	}psdh;
-
-	psdh.ip_src = iph->saddr;
-	psdh.ip_dst = iph->daddr;
-	psdh.zero = 0;
-	psdh.protocol = 6;
-	psdh.tcp_len = htons(ntohs(iph->tot_len) - sizeof(struct ip));
-
-//	printf("ip_len:%d tcplen:%d\n", ntohs(iph->tot_len), ntohs(psdh.tcp_len));
-	memcpy(tcpBuf, &psdh, sizeof(struct pseudoTcpHeader));
-	memcpy(tcpBuf+sizeof(struct pseudoTcpHeader), tcph, ntohs(psdh.tcp_len));
-
-	return ip_cksum((u_int16_t *)tcpBuf,	sizeof(struct pseudoTcpHeader) + ntohs(psdh.tcp_len));
-}
-
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 		struct nfq_data *nfa, void *data)
 {
@@ -88,10 +42,10 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
 		printf("FLG XOR:0x%08x\n", ntohl(xor));
 		printf("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+		
 		tcph->seq ^= xor;
 		tcph->ack_seq ^= xor;
-		tcph->check = 0;
-		tcph->check = tcp_cksum(pkg_data);
+
 		printf("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 
 		return nfq_set_verdict(qh, id, NF_ACCEPT, pkg_data_len, (u_int8_t *) pkg_data);
