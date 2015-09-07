@@ -131,6 +131,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 		tcph->seq ^= xor;
 		tcph->ack_seq ^= xor;
 		if (enable_checksum) {
+			tcph->check = 0;
 			tcph->check = tcp_cksum(pkg_data);
 		}
 
