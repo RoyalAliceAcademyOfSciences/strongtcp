@@ -123,11 +123,11 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
 		struct iphdr *iph = (struct iphdr *) pkg_data;
 		struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + 12)) + ((*(u_int16_t*) ((char*)tcph + 12)) << 16);
+		u_int32_t xor = (*(u_int16_t *) ((char *)tcph + 12)) + ((*(u_int16_t *) ((char *)tcph + 12)) << 16);
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
-		
+
 		tcph->seq ^= xor;
 		tcph->ack_seq ^= xor;
 		if (enable_checksum) {
@@ -139,7 +139,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 		return nfq_set_verdict(qh, id, NF_ACCEPT, pkg_data_len, (u_int8_t *) pkg_data);
 	}
 
-	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
+	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL);
 }
 
 int main(int argc, char **argv)
@@ -149,7 +149,7 @@ int main(int argc, char **argv)
 	int fd;
 	int rv;
 	char buf[4096] __attribute__ ((aligned));
-	
+
 	parse_arguments(argc, argv);
 
 	LOG("opening library handle\n");
