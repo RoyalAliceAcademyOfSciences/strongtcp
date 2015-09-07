@@ -174,7 +174,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
-	LOG("binding this socket to queue '0'\n");
+	LOG("binding this socket to queue '%d'\n", queue_num);
 	qh = nfq_create_queue(h, queue_num, &cb, NULL );
 	if (!qh)
 	{
