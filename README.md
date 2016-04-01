@@ -33,5 +33,22 @@ if (pkg_data_len >= 0)
 return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
 ````
 
+## Build
+### for Linux
+````shell
+cd src
+make
+````
+### for Openwrt
+````shell
+make menuconfig
+make
+````
+### for Android
+````shell
+ndk-build
+````
+
+
 ## About the author, of this README
 Nobody is going to understand WTF does these code do without a README.md, so I wrote one
