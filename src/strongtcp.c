@@ -134,7 +134,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		tcph->ack_seq ^= xor;
 		if (enable_checksum) {
 			tcph->check = 0;
-			tcph->check = htons(tcp_cksum(pkg_data));
+			tcph->check = tcp_cksum(pkg_data);
 		}
 
 		LOG("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
