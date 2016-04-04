@@ -28,7 +28,7 @@ int enable_checksum = 0;
 
 void print_help() {
 	printf("Usage:\n"
-		"\tstrongtcp [--verbose | -v] [--checksum] [--queue num]\n");
+		"\tstrongtcp [--verbose | -v] [--checksum | -c] [--queue num | -q]\n");
 }
 
 void parse_arguments(int argc, char **argv)
@@ -40,9 +40,9 @@ void parse_arguments(int argc, char **argv)
 			exit(0);
 		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
 			verbose = 1;
-		} else if (strcmp(argv[i], "--checksum") == 0) {
+		} else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--checksum") == 0) {
 			enable_checksum = 1;
-		} else if (strcmp(argv[i], "--queue") == 0) {
+		} else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--queue") == 0) {
 			if (i + 1 < argc) {
 				queue_num = atoi(argv[i + 1]);
 				i++;
