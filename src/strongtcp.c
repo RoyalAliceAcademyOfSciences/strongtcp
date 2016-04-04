@@ -12,6 +12,7 @@
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+#define MTU_OCTET 1500
 #define XOR_OFFSET_OCTET 12
 #define XOR_SIZE_BIT 16
 
@@ -77,7 +78,7 @@ static u_int16_t tcp_cksum(char *pkg_data)
 {
 	struct iphdr *iph = (struct iphdr *) pkg_data;
 	struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-	char tcpBuf[1500];
+	char tcpBuf[MTU_OCTET] = {0};
 
 	struct pseudoTcpHeader {
 		u_int32_t ip_src;
@@ -133,7 +134,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		tcph->ack_seq ^= xor;
 		if (enable_checksum) {
 			tcph->check = 0;
-			tcph->check = tcp_cksum(pkg_data);
+			tcph->check = htons(tcp_cksum(pkg_data));
 		}
 
 		LOG("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
