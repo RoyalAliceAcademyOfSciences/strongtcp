@@ -12,6 +12,9 @@
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+#define XOR_OFFSET_OCTET 12
+#define XOR_SIZE_BIT 16
+
 #ifdef DEBUG
 #define LOG(x, ...) printf(x, ##__VA_ARGS__)
 #else
@@ -77,28 +80,26 @@ static u_int16_t tcp_cksum(char *pkg_data)
 	char tcpBuf[1500];
 
 	struct pseudoTcpHeader {
-    u_int32_t ip_src;
-    u_int32_t ip_dst;
-    u_int8_t zero;//always zero
-    u_int8_t protocol;// = 6;//for tcp
-    u_int16_t tcp_len;
+		u_int32_t ip_src;
+		u_int32_t ip_dst;
+		u_int8_t zero;//always zero
+		u_int8_t protocol;// = 6;//for tcp
+		u_int16_t tcp_len;
 	} psdh;
 
 	psdh.ip_src = iph->saddr;
 	psdh.ip_dst = iph->daddr;
 	psdh.zero = 0;
 	psdh.protocol = 6;
-	psdh.tcp_len = htons(ntohs(iph->tot_len) - sizeof(struct ip));
+	psdh.tcp_len = htons(ntohs(iph->tot_len) - (iph->ihl * 4));
 
-//	printf("ip_len:%d tcplen:%d\n", ntohs(iph->tot_len), ntohs(psdh.tcp_len));
 	memcpy(tcpBuf, &psdh, sizeof(struct pseudoTcpHeader));
 	memcpy(tcpBuf + sizeof(struct pseudoTcpHeader), tcph, ntohs(psdh.tcp_len));
 
-	return ip_cksum((u_int16_t *)tcpBuf,	sizeof(struct pseudoTcpHeader) + ntohs(psdh.tcp_len));
+	return ip_cksum((u_int16_t *)tcpBuf, sizeof(struct pseudoTcpHeader) + ntohs(psdh.tcp_len));
 }
 
-static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
-		struct nfq_data *nfa, void *data)
+static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
 {
 
 	struct nfqnl_msg_packet_hdr *ph;
@@ -123,7 +124,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 
 		struct iphdr *iph = (struct iphdr *) pkg_data;
 		struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + 12)) + ((*(u_int16_t*) ((char*)tcph + 12)) << 16);
+		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + XOR_OFFSET_OCTET)) + ((*(u_int16_t*) ((char*)tcph + XOR_OFFSET_OCTET)) << XOR_SIZE_BIT);
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
