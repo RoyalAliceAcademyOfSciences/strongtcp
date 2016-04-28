@@ -24,13 +24,14 @@
 #ifdef DEBUG
 #define LOG(x, ...) printf(x, ##__VA_ARGS__)
 #else
-#define LOG(x, ...) if (verbose) { printf(x, ##__VA_ARGS__); }
+#define LOG(x, ...) if (enable_verbose) { printf(x, ##__VA_ARGS__); }
 #endif
 #define ERROR(x, ...) fprintf(stderr, x, ##__VA_ARGS__)
 
 int queue_num = 0;
-int verbose = 0;
+int enable_verbose = 0;
 int enable_checksum = 0;
+int enable_addzero = 0;
 pcap_dumpfile dumpfile = NULL;
 
 void print_help() {
@@ -46,8 +47,8 @@ void parse_arguments(int argc, char **argv)
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			print_help();
 			exit(0);
-		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
-			verbose = 1;
+		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--enable_verbose") == 0) {
+			enable_verbose = 1;
 		} else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--checksum") == 0) {
 			enable_checksum = 1;
 		} else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--queue") == 0) {
@@ -84,9 +85,14 @@ static u_int16_t ip_cksum(u_int16_t *addr, int len)
 	}
 	if (len == 1)
 	{
-              u_int8_t tmp = *(u_int8_t *)addr;
-              u_int16_t last = (u_int16_t)(tmp<<8);        // add 0
-              sum += last;
+		if(enable_addzero)
+		{
+			u_int8_t tmp = *(u_int8_t *)addr;
+			u_int16_t last = (u_int16_t)(tmp<<8);        // add 0
+			sum += last;
+		}
+		else
+			sum += *(u_int8_t*) addr;
 	}
 	sum = (sum >> 16) + (sum & 0xffff);  //把高位的进位，加到低八位，其实是32位加法
 	sum += (sum >> 16);  //add carry
@@ -205,6 +211,15 @@ int main(int argc, char **argv)
 	
 	parse_arguments(argc, argv);
 
+	LOG("re-calc checksum enable: %d\n", enable_checksum);
+
+	if(enable_checksum)
+	{
+		u_int16_t test[] = {0x1234};
+		enable_addzero = ((u_int32_t)((u_int16_t)(*(u_int8_t *)test)<<8)) == 0x00001200;        // need add 0
+		LOG("addzero checksum enable: %d\n", enable_addzero);
+	}
+
 	LOG("opening library handle\n");
 	h = nfq_open();
 	if (!h)
@@ -243,7 +258,6 @@ int main(int argc, char **argv)
 	}
 
 	fd = nfq_fd(h);
-
 	while ((rv = recv(fd, buf, sizeof(buf), 0)) && rv >= 0)
 	{
 		LOG("pkt received\n");
