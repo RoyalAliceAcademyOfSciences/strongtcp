@@ -47,7 +47,7 @@ void parse_arguments(int argc, char **argv)
 		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
 			print_help();
 			exit(0);
-		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--enable_verbose") == 0) {
+		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
 			enable_verbose = 1;
 		} else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--checksum") == 0) {
 			enable_checksum = 1;
