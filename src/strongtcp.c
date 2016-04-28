@@ -83,7 +83,11 @@ static u_int16_t ip_cksum(u_int16_t *addr, int len)
 		len -= 2;
 	}
 	if (len == 1)
-	sum += *(u_int8_t*) addr;
+	{
+              u_int8_t tmp = *(u_int8_t *)addr;
+              u_int16_t last = (u_int16_t)(tmp<<8);        // add 0
+              sum += last;
+	}
 	sum = (sum >> 16) + (sum & 0xffff);  //把高位的进位，加到低八位，其实是32位加法
 	sum += (sum >> 16);  //add carry
 	cksum = ~sum;   //取反
