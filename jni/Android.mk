@@ -39,7 +39,9 @@ LOCAL_LDFLAGS += -fPIE -pie
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink-1.0.1/include \
 $(LOCAL_PATH)/libnetfilter_queue-1.0.2/include
 LOCAL_MODULE:=strongtcp
-LOCAL_SRC_FILES:=../src/strongtcp.c
+LOCAL_SRC_FILES:=../src/strongtcp.c \
+../src/pcap.h \
+../src/pcap.c
 LOCAL_STATIC_LIBRARIES:=libnetfilter_queue
 LOCAL_LDLIBS:=-llog -lm
 #include $(BUILD_SHARED_LIBRARY)
