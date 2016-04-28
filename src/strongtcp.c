@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/time.h>
 
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -12,9 +13,13 @@
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
-#define MTU_OCTET 1500
-#define XOR_OFFSET_OCTET 12
+#include "pcap.h"
+
+#define MTU 1500
+#define XOR_OFFSET 12
 #define XOR_SIZE_BIT 16
+#define HOOK_IN		1
+#define HOOK_OUT	3
 
 #ifdef DEBUG
 #define LOG(x, ...) printf(x, ##__VA_ARGS__)
@@ -26,10 +31,12 @@
 int queue_num = 0;
 int verbose = 0;
 int enable_checksum = 0;
+pcap_dumpfile dumpfile = NULL;
 
 void print_help() {
 	printf("Usage:\n"
-		"\tstrongtcp [--verbose | -v] [--checksum | -c] [--queue num | -q]\n");
+		"\tstrongtcp [--verbose | -v] [--checksum | -c] [--queue num | -q]\n"
+		"\t\t[--dump file | -d]\n");
 }
 
 void parse_arguments(int argc, char **argv)
@@ -48,6 +55,15 @@ void parse_arguments(int argc, char **argv)
 				queue_num = atoi(argv[i + 1]);
 				i++;
 			} else {
+				ERROR("Invalid arguments.\n");
+				print_help();
+				exit(0);
+			}
+		} else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dump") == 0) {
+			if (i + 1 < argc)
+				dumpfile = pcap_dump_fileinit(argv[i + 1]);
+			if(!dumpfile)
+			{
 				ERROR("Invalid arguments.\n");
 				print_help();
 				exit(0);
@@ -74,11 +90,11 @@ static u_int16_t ip_cksum(u_int16_t *addr, int len)
 	return (cksum);
 }
 
-static u_int16_t tcp_cksum(char *pkg_data)
+static u_int16_t tcp_cksum(u_char *pkg_data)
 {
 	struct iphdr *iph = (struct iphdr *) pkg_data;
 	struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-	char tcpBuf[MTU_OCTET] = {0};
+	char tcpBuf[MTU] = {0};
 
 	struct pseudoTcpHeader {
 		u_int32_t ip_src;
@@ -107,7 +123,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 	uint32_t id = 0;
 	uint32_t pkg_data_len;
 
-	unsigned char *pkg_data;
+	u_char *pkg_data;
 
 	LOG("entering callback\n");
 
@@ -119,13 +135,28 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 	}
 
 	pkg_data_len = nfq_get_payload(nfa, &pkg_data);
-	if (pkg_data_len >= 0)
+	// nfq_get_payload() return -1 on error, otherwise > 0.
+	if (pkg_data_len > 0)
 	{
 		LOG("payload_len=%d\n", pkg_data_len);
 
+		if(dumpfile && ph->hook == HOOK_OUT)
+		{
+			struct timeval tv;
+			gettimeofday(&tv, NULL);
+
+			pcaprec_hdr_t pcaprec_hdr;
+			pcaprec_hdr.ts_usec = tv.tv_usec;
+			pcaprec_hdr.ts_sec = tv.tv_sec;
+			pcaprec_hdr.incl_len = pkg_data_len;
+			pcaprec_hdr.orig_len = pkg_data_len;
+
+			pcap_dump(pkg_data, pcaprec_hdr, dumpfile);
+		}
+
 		struct iphdr *iph = (struct iphdr *) pkg_data;
 		struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
-		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + XOR_OFFSET_OCTET)) + ((*(u_int16_t*) ((char*)tcph + XOR_OFFSET_OCTET)) << XOR_SIZE_BIT);
+		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) + ((*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) << XOR_SIZE_BIT);
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
@@ -139,9 +170,24 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 
 		LOG("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 
+		if(dumpfile && ph->hook == HOOK_IN)
+		{
+			struct timeval tv;
+			gettimeofday(&tv, NULL);
+
+			pcaprec_hdr_t pcaprec_hdr;
+			pcaprec_hdr.ts_usec = tv.tv_usec;
+			pcaprec_hdr.ts_sec = tv.tv_sec;
+			pcaprec_hdr.incl_len = pkg_data_len;
+			pcaprec_hdr.orig_len = pkg_data_len;
+
+			pcap_dump(pkg_data, pcaprec_hdr, dumpfile);
+		}
+
 		return nfq_set_verdict(qh, id, NF_ACCEPT, pkg_data_len, (u_int8_t *) pkg_data);
 	}
 
+	LOG("ERR: nfq_get_payload() not return > 0\n");
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
 }
 
@@ -212,6 +258,7 @@ int main(int argc, char **argv)
 
 	LOG("closing library handle\n");
 	nfq_close(h);
+	pcap_dump_close(dumpfile);
 
 	return 0;
 }
