@@ -1,10 +1,10 @@
 # StrongTCP
 
-A small program which DROP every packet from `--queue num` whose `pkg_data_len >= 0`
+A small program which will modify every packet from `--queue num` whose `pkg_data_len >= 0`, or `DROP` it otherwise.
 
-As an immediate consequence, all RST packets are DROPped, which is favored in many situations
+As an immediate consequence, all RST packets are DROPped, which is favored in most situations.
 
-## To achieve that, you will first need
+## To achieve that (on Linux) you will need the following
 
 ````c
 #include <netinet/in.h>
@@ -14,9 +14,8 @@ As an immediate consequence, all RST packets are DROPped, which is favored in ma
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 ````
-I really wondered whether these libraries exist on OS X.
 
-## Then,
+## For those impatient
 
 ````c
 if (pkg_data_len >= 0)
@@ -34,21 +33,25 @@ return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
 ````
 
 ## Build
-### for Linux
+- Linux
 ````shell
 cd src
 make
 ````
-### for Openwrt
+- Openwrt
 ````shell
 make menuconfig
 make
 ````
-### for Android
+- Android
 ````shell
 ndk-build
 ````
 
 
 ## About the author, of this README
-Nobody is going to understand WTF does these code do without a README.md, so I wrote one
+- Nobody is going to understand WTF does these code do without a README.md, so I wrote one
+- No copyright information provided
+
+## Disclaimer
+- removed according to regulation.
