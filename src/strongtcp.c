@@ -7,6 +7,7 @@
 
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
@@ -102,28 +103,50 @@ static u_int16_t ip_cksum(u_int16_t *addr, int len)
 
 static u_int16_t tcp_cksum(u_char *pkg_data)
 {
-	struct iphdr *iph = (struct iphdr *) pkg_data;
-	struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
+	struct iphdr *ip4h = (struct iphdr *) pkg_data;
+	struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (ip4h->ihl * 4));
 	char tcpBuf[MTU] = {0};
 
-	struct pseudoTcpHeader {
-		u_int32_t ip_src;
-		u_int32_t ip_dst;
-		u_int8_t zero;//always zero
-		u_int8_t protocol;// = 6;//for tcp
-		u_int16_t tcp_len;
-	} psdh;
+	if(ip4h->version == 6)
+	{
+		struct ip6_hdr *ip6h = (struct ip6_hdr *) pkg_data;
+		struct ip6PseudoHeader {
+		    struct in6_addr ip6_src;      /* source address */
+		    struct in6_addr ip6_dst;      /* destination address */
+			u_int32_t tcp_len;
+			u_int8_t zero[3]; //always zero
+			u_int8_t protocol; // = 6; //for tcp
+		} psdh;
 
-	psdh.ip_src = iph->saddr;
-	psdh.ip_dst = iph->daddr;
-	psdh.zero = 0;
-	psdh.protocol = 6;
-	psdh.tcp_len = htons(ntohs(iph->tot_len) - (iph->ihl * 4));
+		psdh.ip6_src = ip6h->ip6_src;
+		psdh.ip6_dst = ip6h->ip6_dst;
+		psdh.tcp_len = ip6h->ip6_ctlun.ip6_un1.ip6_un1_plen;
+		memset(psdh.zero, 0, 3);
+		psdh.protocol = 6;
 
-	memcpy(tcpBuf, &psdh, sizeof(struct pseudoTcpHeader));
-	memcpy(tcpBuf + sizeof(struct pseudoTcpHeader), tcph, ntohs(psdh.tcp_len));
+		memcpy(tcpBuf, &psdh, sizeof(struct ip6PseudoHeader));
+		memcpy(tcpBuf + sizeof(struct ip6PseudoHeader), tcph, ntohs(psdh.tcp_len));
+		return ip_cksum((u_int16_t *)tcpBuf, sizeof(struct ip6PseudoHeader) + ntohs(psdh.tcp_len));
+	}
+	else
+	{
+		struct ip4PseudoHeader {
+			u_int32_t ip_src;
+			u_int32_t ip_dst;
+			u_int8_t zero;//always zero
+			u_int8_t protocol;// = 6;//for tcp
+			u_int16_t tcp_len;
+		} psdh;
 
-	return ip_cksum((u_int16_t *)tcpBuf, sizeof(struct pseudoTcpHeader) + ntohs(psdh.tcp_len));
+		psdh.ip_src = ip4h->saddr;
+		psdh.ip_dst = ip4h->daddr;
+		psdh.zero = 0;
+		psdh.protocol = 6;
+		psdh.tcp_len = htons(ntohs(ip4h->tot_len) - (ip4h->ihl * 4));
+		memcpy(tcpBuf, &psdh, sizeof(struct ip4PseudoHeader));
+		memcpy(tcpBuf + sizeof(struct ip4PseudoHeader), tcph, ntohs(psdh.tcp_len));
+		return ip_cksum((u_int16_t *)tcpBuf, sizeof(struct ip4PseudoHeader) + ntohs(psdh.tcp_len));
+	}
 }
 
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *nfa, void *data)
@@ -141,14 +164,14 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 	if (ph)
 	{
 		id = ntohl(ph->packet_id);
-		LOG("hw_protocol=0x%04x hook=%u id=%u ", ntohs(ph->hw_protocol), ph->hook, id);
+		LOG("HWP:0x%04x HOK:%u ID:%u ", ntohs(ph->hw_protocol), ph->hook, id);
 	}
 
 	pkg_data_len = nfq_get_payload(nfa, &pkg_data);
 	// nfq_get_payload() return -1 on error, otherwise > 0.
 	if (pkg_data_len > 0)
 	{
-		LOG("payload_len=%d\n", pkg_data_len);
+		LOG("LEN:%d ", pkg_data_len);
 
 		if(dumpfile && ph->hook == HOOK_OUT)
 		{
@@ -164,8 +187,19 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			pcap_dump(pkg_data, pcaprec_hdr, dumpfile);
 		}
 
-		struct iphdr *iph = (struct iphdr *) pkg_data;
-		struct tcphdr *tcph = (struct tcphdr *) (pkg_data + (iph->ihl * 4));
+		struct tcphdr *tcph;
+		struct iphdr *ip4h = (struct iphdr *) pkg_data;
+		if(ip4h->version == 6)
+		{
+			tcph = (struct tcphdr *) (pkg_data + sizeof(struct ip6_hdr));
+			LOG("VER:IP6\n");
+		}
+		else
+		{
+			tcph = (struct tcphdr *) (pkg_data + (ip4h->ihl * 4));
+			LOG("VER:IP4\n");
+		}
+
 		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) + ((*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) << XOR_SIZE_BIT);
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
@@ -197,7 +231,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		return nfq_set_verdict(qh, id, NF_ACCEPT, pkg_data_len, (u_int8_t *) pkg_data);
 	}
 
-	LOG("ERR: nfq_get_payload() not return > 0\n");
+	ERROR("nfq_get_payload() not return > 0\n");
 	return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
 }
 
