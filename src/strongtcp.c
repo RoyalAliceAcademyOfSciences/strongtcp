@@ -14,13 +14,15 @@
 #include <linux/netfilter.h>            /* for NF_ACCEPT */
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+#ifdef DEBUG
 #include "pcap.h"
+#endif
 
-#define MTU 1500
-#define XOR_OFFSET 12
-#define XOR_SIZE_BIT 16
-#define HOOK_IN		1
-#define HOOK_OUT	3
+#define MTU				1500
+#define XOR_OFFSET		12
+#define XOR_SIZE_BIT	16
+#define HOOK_IN			1
+#define HOOK_OUT		3
 
 #ifdef DEBUG
 #define LOG(x, ...) printf(x, ##__VA_ARGS__)
@@ -33,12 +35,17 @@ int queue_num = 0;
 int enable_verbose = 0;
 int enable_checksum = 0;
 int enable_addzero = 0;
+#ifdef DEBUG
 pcap_dumpfile dumpfile = NULL;
+#endif
 
 void print_help() {
 	printf("Usage:\n"
 		"\tstrongtcp [--verbose | -v] [--checksum | -c] [--queue num | -q]\n"
-		"\t\t[--dump file | -d]\n");
+#ifdef DEBUG
+		"\t\t[--dump file | -d]\n"
+#endif
+	);
 }
 
 void parse_arguments(int argc, char **argv)
@@ -61,7 +68,9 @@ void parse_arguments(int argc, char **argv)
 				print_help();
 				exit(0);
 			}
-		} else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dump") == 0) {
+		}
+#ifdef DEBUG
+		else if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--dump") == 0) {
 			if (i + 1 < argc)
 				dumpfile = pcap_dump_fileinit(argv[i + 1]);
 			if(!dumpfile)
@@ -71,6 +80,7 @@ void parse_arguments(int argc, char **argv)
 				exit(0);
 			}
 		}
+#endif
 	}
 }
 
@@ -173,6 +183,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 	{
 		LOG("LEN:%d ", pkg_data_len);
 
+#ifdef DEBUG
 		if(dumpfile && ph->hook == HOOK_OUT)
 		{
 			struct timeval tv;
@@ -186,6 +197,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 
 			pcap_dump(pkg_data, pcaprec_hdr, dumpfile);
 		}
+#endif
 
 		struct tcphdr *tcph;
 		struct iphdr *ip4h = (struct iphdr *) pkg_data;
@@ -200,7 +212,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			LOG("VER:IP4\n");
 		}
 
-		u_int32_t xor = (*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) + ((*(u_int16_t*) ((char*)tcph + XOR_OFFSET)) << XOR_SIZE_BIT);
+		u_int32_t xor = (*(u_int32_t*) ((char*)tcph + XOR_OFFSET));
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
@@ -214,6 +226,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 
 		LOG("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 
+#ifdef DEBUG
 		if(dumpfile && ph->hook == HOOK_IN)
 		{
 			struct timeval tv;
@@ -227,6 +240,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 
 			pcap_dump(pkg_data, pcaprec_hdr, dumpfile);
 		}
+#endif
 
 		return nfq_set_verdict(qh, id, NF_ACCEPT, pkg_data_len, (u_int8_t *) pkg_data);
 	}
@@ -298,7 +312,7 @@ int main(int argc, char **argv)
 		nfq_handle_packet(h, buf, rv);
 	}
 
-	LOG("unbinding from queue 0\n");
+	LOG("unbinding from queue '%d'\n", queue_num);
 	nfq_destroy_queue(qh);
 
 #ifdef INSANE
@@ -310,7 +324,10 @@ int main(int argc, char **argv)
 
 	LOG("closing library handle\n");
 	nfq_close(h);
+
+#ifdef DEBUG
 	pcap_dump_close(dumpfile);
+#endif
 
 	return 0;
 }
