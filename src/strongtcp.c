@@ -232,7 +232,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			else
 			{
 				ip4h->protocol = SOL_TCP;
-				ip4h->tot_len = htons(ntohs(ip4h->tot_len) - 8);
+				ip4h->tot_len = htons(ntohs(ip4h->tot_len) - 10);
 				ip4h->check = 0;
 				ip4h->check = ip_cksum((u_int16_t*)ip4h, ip4h->ihl * 4);
 			}
@@ -243,6 +243,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 				tcph->check = 0;
 				tcph->check = tcp_cksum(pkg_data);
 			}
+			LOG("UDP SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 		}
 		else if( enable_udpmode && ph->hook==HOOK_OUT && !tcph->syn && !tcph->fin )
 		{
@@ -252,6 +253,8 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			}
 			else
 			{
+				LOG("UDP SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+
 				static struct sockaddr_in packet_addr;
 				bzero(&packet_addr, sizeof(packet_addr));
 				packet_addr.sin_family = AF_INET;
