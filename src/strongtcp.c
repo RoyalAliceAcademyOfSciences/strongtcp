@@ -20,6 +20,7 @@
 #endif
 
 #define MTU		1500
+#define PPPHEADER_SIZE	8
 #define XOR_OFFSET	12
 #define XOR_SIZE_BIT	16
 #define HOOK_IN		1
@@ -227,25 +228,26 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			if(ip4h->version == 6)
 			{
 				ip6h->ip6_ctlun.ip6_un1.ip6_un1_nxt = SOL_TCP;
-				ip6h->ip6_ctlun.ip6_un1.ip6_un1_plen = htons(ntohs(ip6h->ip6_ctlun.ip6_un1.ip6_un1_plen) - 8);
+				ip6h->ip6_ctlun.ip6_un1.ip6_un1_plen = htons(ntohs(ip6h->ip6_ctlun.ip6_un1.ip6_un1_plen) - sizeof(struct udphdr));
 			}
 			else
 			{
 				ip4h->protocol = SOL_TCP;
-				ip4h->tot_len = htons(ntohs(ip4h->tot_len) - 10);
+				ip4h->tot_len = htons(ntohs(ip4h->tot_len) - sizeof(struct udphdr));
 				ip4h->check = 0;
 				ip4h->check = ip_cksum((u_int16_t*)ip4h, ip4h->ihl * 4);
 			}
-			memcpy(udph, ((u_int8_t*)udph) + 8, 2);
-			memcpy(((u_int8_t*)udph) + 4, ((u_int8_t*)udph) + 10, ntohs(udph->len) - 10);
+			memcpy(udph, ((u_int8_t*)udph) + sizeof(struct udphdr), ntohs(udph->len));
+
 			if (enable_checksum) {
 				tcph = (struct tcphdr *)udph;
 				tcph->check = 0;
 				tcph->check = tcp_cksum(pkg_data);
 			}
-			LOG("UDP SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+			LOG("UDP BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+			return nfq_set_verdict(qh, id, NF_REPEAT, pkg_data_len - sizeof(struct udphdr), (u_int8_t *) pkg_data);
 		}
-		else if( enable_udpmode && ph->hook==HOOK_OUT && !tcph->syn && !tcph->fin )
+		else if( enable_udpmode && (pkg_data_len + sizeof(struct udphdr)) < (MTU - PPPHEADER_SIZE) && ph->hook==HOOK_OUT && !tcph->syn && !tcph->fin )
 		{
 			if(ip4h->version == 6)
 			{
@@ -253,7 +255,12 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 			}
 			else
 			{
-				LOG("UDP SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+				u_int32_t xor = (*(u_int32_t*) ((u_char*)tcph + XOR_OFFSET));
+				LOG("UDP FLG XOR:0x%08x\n", ntohl(xor));
+				LOG("UDP BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
+				tcph->seq ^= xor;
+				tcph->ack_seq ^= xor;
+				LOG("UDP AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 
 				static struct sockaddr_in packet_addr;
 				bzero(&packet_addr, sizeof(packet_addr));
@@ -262,8 +269,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 				packet_addr.sin_port = tcph->dest;
 
 				u_int16_t tcpsize = ntohs(ip4h->tot_len) - (ip4h->ihl * 4);
-				memcpy(((u_int8_t*)tcph) + 2, ((u_int8_t*)tcph) + 4, tcpsize - 2);
-				sendto(socket_udp, tcph, tcpsize - 2, 0, (struct sockaddr *) &packet_addr, sizeof(packet_addr));
+				sendto(socket_udp, tcph, tcpsize, 0, (struct sockaddr *) &packet_addr, sizeof(packet_addr));
 				return nfq_set_verdict(qh, id, NF_DROP, 0, NULL );
 			}
 		}
