@@ -7,10 +7,10 @@ LOCAL_PATH:=$(call my-dir)
 #####################################################################
 include $(CLEAR_VARS)
 LOCAL_MODULE:=nflink
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink-1.0.1/include
-LOCAL_SRC_FILES := libnfnetlink-1.0.1/src/iftable.c \
-libnfnetlink-1.0.1/src/rtnl.c \
-libnfnetlink-1.0.1/src/libnfnetlink.c
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink/include
+LOCAL_SRC_FILES := libnfnetlink/src/iftable.c \
+libnfnetlink/src/rtnl.c \
+libnfnetlink/src/libnfnetlink.c
 include $(BUILD_STATIC_LIBRARY)
 #include $(BUILD_SHARED_LIBRARY)
  
@@ -18,10 +18,10 @@ include $(BUILD_STATIC_LIBRARY)
 #			build libnetfilter_queue			#
 #####################################################################
 include $(CLEAR_VARS)
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink-1.0.1/include \
-$(LOCAL_PATH)/libnetfilter_queue-1.0.2/include
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink/include \
+$(LOCAL_PATH)/libnetfilter_queue/include
 LOCAL_MODULE:=netfilter_queue
-LOCAL_SRC_FILES:=libnetfilter_queue-1.0.2/src/libnetfilter_queue.c
+LOCAL_SRC_FILES:=libnetfilter_queue/src/libnetfilter_queue.c
 LOCAL_STATIC_LIBRARIES:=libnflink
 include $(BUILD_STATIC_LIBRARY)
 #include $(BUILD_SHARED_LIBRARY)
@@ -36,8 +36,8 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS += -fPIE
 LOCAL_LDFLAGS += -fPIE -pie
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink-1.0.1/include \
-$(LOCAL_PATH)/libnetfilter_queue-1.0.2/include
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/libnfnetlink/include \
+$(LOCAL_PATH)/libnetfilter_queue/include
 LOCAL_MODULE:=strongtcp
 LOCAL_SRC_FILES:=../src/strongtcp.c \
 ../src/pcap.h \
