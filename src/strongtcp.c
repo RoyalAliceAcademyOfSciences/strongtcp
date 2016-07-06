@@ -18,11 +18,11 @@
 #include "pcap.h"
 #endif
 
-#define MTU				1500
-#define XOR_OFFSET		12
+#define MTU		1500
+#define XOR_OFFSET	12
 #define XOR_SIZE_BIT	16
-#define HOOK_IN			1
-#define HOOK_OUT		3
+#define HOOK_IN		1
+#define HOOK_OU		3
 
 #ifdef DEBUG
 #define LOG(x, ...) printf(x, ##__VA_ARGS__)
@@ -105,9 +105,9 @@ static u_int16_t ip_cksum(u_int16_t *addr, int len)
 		else
 			sum += *(u_int8_t*) addr;
 	}
-	sum = (sum >> 16) + (sum & 0xffff);  //把高位的进位，加到低八位，其实是32位加法
+	sum = (sum >> 16) + (sum & 0xffff);
 	sum += (sum >> 16);  //add carry
-	cksum = ~sum;   //取反
+	cksum = ~sum;
 	return (cksum);
 }
 
@@ -184,7 +184,7 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		LOG("LEN:%d ", pkg_data_len);
 
 #ifdef DEBUG
-		if(dumpfile && ph->hook == HOOK_OUT)
+		if(dumpfile && ph->hook == HOOK_OU)
 		{
 			struct timeval tv;
 			gettimeofday(&tv, NULL);
