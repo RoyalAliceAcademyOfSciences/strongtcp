@@ -18,9 +18,18 @@
 #include "pcap.h"
 #endif
 
+typedef struct st_tcphdr
+{
+	u_int16_t port[2];
+	u_int32_t seq;
+	u_int32_t ack_seq;
+	u_int16_t flags;
+	u_int16_t window;
+	u_int16_t check;
+	u_int16_t urg_ptr;
+} * ST_TCPHDR_PTR;
+
 #define MTU		1500
-#define XOR_OFFSET	12
-#define XOR_SIZE_BIT	16
 #define HOOK_IN		1
 #define HOOK_OU		3
 
@@ -33,7 +42,6 @@
 
 int queue_num = 0;
 int enable_verbose = 0;
-int enable_checksum = 0;
 int enable_addzero = 0;
 #ifdef DEBUG
 pcap_dumpfile dumpfile = NULL;
@@ -41,10 +49,11 @@ pcap_dumpfile dumpfile = NULL;
 
 void print_help() {
 	printf("Usage:\n"
-		"\tstrongtcp [--verbose | -v] [--checksum | -c] [--queue num | -q]\n"
+		"\tstrongtcp [--verbose | -v] [--queue num | -q]"
 #ifdef DEBUG
-		"\t\t[--dump file | -d]\n"
+		" [--dump file | -d]"
 #endif
+		"\n"
 	);
 }
 
@@ -57,8 +66,6 @@ void parse_arguments(int argc, char **argv)
 			exit(0);
 		} else if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
 			enable_verbose = 1;
-		} else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "--checksum") == 0) {
-			enable_checksum = 1;
 		} else if (strcmp(argv[i], "-q") == 0 || strcmp(argv[i], "--queue") == 0) {
 			if (i + 1 < argc) {
 				queue_num = atoi(argv[i + 1]);
@@ -199,30 +206,31 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		}
 #endif
 
-		struct tcphdr *tcph;
+		ST_TCPHDR_PTR tcph;
 		struct iphdr *ip4h = (struct iphdr *) pkg_data;
 		if(ip4h->version == 6)
 		{
-			tcph = (struct tcphdr *) (pkg_data + sizeof(struct ip6_hdr));
+			tcph = (ST_TCPHDR_PTR) (pkg_data + sizeof(struct ip6_hdr));
 			LOG("VER:IP6\n");
 		}
 		else
 		{
-			tcph = (struct tcphdr *) (pkg_data + (ip4h->ihl * 4));
+			tcph = (ST_TCPHDR_PTR) (pkg_data + (ip4h->ihl * 4));
 			LOG("VER:IP4\n");
 		}
 
-		u_int32_t xor = (*(u_int32_t*) ((char*)tcph + XOR_OFFSET));
+		if(tcph->urg_ptr == 0)
+			tcph->urg_ptr = random();
+
+		u_int32_t xor = tcph->flags + (tcph->urg_ptr<<16);
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 		
 		tcph->seq ^= xor;
 		tcph->ack_seq ^= xor;
-		if (enable_checksum) {
-			tcph->check = 0;
-			tcph->check = tcp_cksum(pkg_data);
-		}
+		tcph->check = 0;
+		tcph->check = tcp_cksum(pkg_data);
 
 		LOG("AFT SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
 
@@ -259,14 +267,9 @@ int main(int argc, char **argv)
 	
 	parse_arguments(argc, argv);
 
-	LOG("re-calc checksum enable: %d\n", enable_checksum);
-
-	if(enable_checksum)
-	{
-		u_int16_t test[] = {0x1234};
-		enable_addzero = ((u_int32_t)((u_int16_t)(*(u_int8_t *)test)<<8)) == 0x00001200;        // need add 0
-		LOG("addzero checksum enable: %d\n", enable_addzero);
-	}
+	u_int16_t test[] = {0x1234};
+	enable_addzero = ((u_int32_t)((u_int16_t)(*(u_int8_t *)test)<<8)) == 0x00001200;        // need add 0
+	LOG("addzero checksum enable: %d\n", enable_addzero);
 
 	LOG("opening library handle\n");
 	h = nfq_open();
