@@ -222,7 +222,8 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg, struct nfq_data *
 		if(tcph->urg_ptr == 0)
 			tcph->urg_ptr = random();
 
-		u_int32_t xor = tcph->flags + (tcph->urg_ptr<<16);
+		u_int32_t xor = ntohs(tcph->urg_ptr);
+		xor = htonl((xor<<16) + ntohs(tcph->flags));
 
 		LOG("FLG XOR:0x%08x\n", ntohl(xor));
 		LOG("BEF SEQ:0x%08x ACK:0x%08x SUM:0x%04x\n", ntohl(tcph->seq), ntohl(tcph->ack_seq), ntohs(tcph->check));
